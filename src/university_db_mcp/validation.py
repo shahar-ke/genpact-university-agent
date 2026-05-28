@@ -24,7 +24,7 @@ DIALECT = "sqlite"
 
 # Statement roots that only read: a SELECT, or a set-operation over SELECTs
 # (UNION / INTERSECT / EXCEPT, which subclass exp.Union in sqlglot).
-_READ_ONLY_ROOTS: tuple[type[exp.Expression], ...] = (exp.Select, exp.Union)
+_READ_ONLY_ROOTS: tuple[type[exp.Expr], ...] = (exp.Select, exp.Union)
 
 
 class RejectionCategory(StrEnum):

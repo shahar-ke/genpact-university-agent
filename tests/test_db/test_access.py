@@ -2,6 +2,7 @@
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 # noinspection PyProtectedMember
 from university_db.access import (
@@ -123,8 +124,31 @@ def test_views_work_on_read_only_connection(tmp_path):
     with ro.connect() as conn:
         create_session_views(conn, prof_scope)
         count = conn.execute(text("SELECT COUNT(*) FROM my_students")).scalar_one()
-        # and writes are still rejected on this connection
+        with pytest.raises(OperationalError):  # writes are still rejected on this connection
+            conn.execute(text("INSERT INTO students (name, email) VALUES ('x', 'x@y.z')"))
     assert count == 2  # Alice and Bob
+
+
+# noinspection SqlNoDataSourceInspection
+def test_views_do_not_leak_across_users_on_a_reused_connection(tmp_path):
+    """A pooled connection carrying one user's views must not serve them to the next user."""
+    engine = _engine(tmp_path, "reuse.db")
+    apply_schema(engine)
+    _seed_known(engine)
+    with session_scope(engine) as s:
+        alice_scope = resolve_scope(s, "alice")
+        bob_scope = resolve_scope(s, "bob")
+    assert alice_scope is not None and bob_scope is not None
+
+    conn = engine.connect()
+    create_session_views(conn, alice_scope)
+    assert conn.execute(text("SELECT grade FROM my_enrollments")).all() == [(90.0,)]
+    conn.close()  # returned to the pool with Alice's TEMP views still defined
+
+    conn = engine.connect()  # likely the same dbapi connection from the pool
+    create_session_views(conn, bob_scope)
+    assert conn.execute(text("SELECT grade FROM my_enrollments")).all() == [(60.0,)]
+    conn.close()
 
 
 def test_admin_scope_reads_all_domain_tables_without_views(tmp_path):

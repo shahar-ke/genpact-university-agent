@@ -59,14 +59,17 @@ def resolve_scope(session: Session, username: str) -> Scope | None:
 def _build_scope(username: str, role: str, student_id: int | None, teacher_id: int | None) -> Scope:
     """Dispatch to the role-specific scope builder; raise on an unsupported role.
 
-    The users table CHECK already constrains role to the supported set, so the raise is
-    defense against schema drift rather than a reachable path in normal operation.
+    The users table CHECK already constrains role and identity, so the raises here are
+    defense against schema drift rather than reachable paths in normal operation. They use
+    if/raise (not assert) so the guarantee holds even under `python -O`.
     """
     if role == Role.STUDENT:
-        assert student_id is not None  # guaranteed by the users CHECK constraint
+        if student_id is None:
+            raise ValueError(f"student user {username!r} has no student_id")
         return _student_scope(username, student_id)
     if role == Role.TEACHER:
-        assert teacher_id is not None
+        if teacher_id is None:
+            raise ValueError(f"teacher user {username!r} has no teacher_id")
         return _teacher_scope(username, teacher_id)
     if role == Role.ADMIN:
         return _admin_scope(username)
@@ -137,6 +140,11 @@ def create_session_views(connection: Connection, scope: Scope) -> None:
     TEMP views live in SQLite's per-connection temp schema, which stays writable even on
     a read-only (mode=ro) main database — so the agent's connection can be read-only for
     data while still setting up its scoped views.
+
+    Each view is dropped and recreated, not `CREATE ... IF NOT EXISTS`: a pooled connection
+    may already carry another user's view of the same name, so the current scope's
+    definition must overwrite it to avoid cross-user data leakage.
     """
     for name, sql in scope.view_sql.items():
-        connection.exec_driver_sql(f"CREATE TEMP VIEW IF NOT EXISTS {name} AS {sql}")
+        connection.exec_driver_sql(f"DROP VIEW IF EXISTS temp.{name}")
+        connection.exec_driver_sql(f"CREATE TEMP VIEW {name} AS {sql}")
