@@ -27,6 +27,7 @@ all     = ["genpact-university-agent[db-mcp,seed,agent]"]
 
 [project.scripts]
 university-init-db = "university_db.init_db:main"
+university-db-mcp = "university_db_mcp.server:main"
 
 [dependency-groups]
 dev = [
