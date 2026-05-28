@@ -37,7 +37,7 @@ def _seed_minimal(engine):
 
 
 def test_schema_applies_and_models_roundtrip(tmp_path):
-    engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}", read_only=False)
     apply_schema(engine)
     _seed_minimal(engine)
 
@@ -51,7 +51,7 @@ def test_schema_applies_and_models_roundtrip(tmp_path):
 
 
 def test_foreign_keys_are_enforced(tmp_path):
-    engine = make_engine(f"sqlite:///{tmp_path / 'fk.db'}")
+    engine = make_engine(f"sqlite:///{tmp_path / 'fk.db'}", read_only=False)
     apply_schema(engine)
 
     # FK pragma must reject an enrollment referencing a non-existent student.
@@ -60,7 +60,7 @@ def test_foreign_keys_are_enforced(tmp_path):
 
 
 def test_grade_check_constraint(tmp_path):
-    engine = make_engine(f"sqlite:///{tmp_path / 'grade.db'}")
+    engine = make_engine(f"sqlite:///{tmp_path / 'grade.db'}", read_only=False)
     apply_schema(engine)
     _seed_minimal(engine)
 

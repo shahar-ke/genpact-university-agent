@@ -52,10 +52,15 @@ def _register_sqlite_fk_pragma(engine: Engine) -> None:
 def make_engine(
     db_url: str | None = None,
     *,
-    read_only: bool = False,
+    read_only: bool,
     echo: bool = False,
 ) -> Engine:
     """Create an engine for the resolved DB URL.
+
+    `read_only` is a required keyword: every caller must state intent. This avoids a
+    silent fail-open on the security-critical agent path (a forgotten flag would
+    otherwise hand it a writable connection). Setup writers pass read_only=False;
+    the agent query path passes read_only=True.
 
     read_only currently applies to SQLite file databases (the home-task backend);
     for other dialects it is a no-op here and would be enforced via DB roles.

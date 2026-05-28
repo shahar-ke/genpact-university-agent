@@ -25,6 +25,9 @@ agent   = [                             # note: NO sqlalchemy here — the whole
 ]
 all     = ["genpact-university-agent[db-mcp,seed,agent]"]
 
+[project.scripts]
+university-init-db = "university_db.init_db:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
