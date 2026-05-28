@@ -26,6 +26,7 @@ def init_db(db_url: str | None = None, *, seed: bool = True) -> dict[str, int]:
 
 
 def main() -> None:
+    """CLI entrypoint: parse args, initialize the database, and print row counts."""
     parser = argparse.ArgumentParser(description="Initialize the university database.")
     parser.add_argument("--db-url", default=None, help="SQLAlchemy URL (default: env or sqlite)")
     parser.add_argument("--no-seed", action="store_true", help="Apply schema only; skip seeding")

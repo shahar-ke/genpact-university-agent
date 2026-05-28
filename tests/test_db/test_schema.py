@@ -21,6 +21,7 @@ from university_db.schema import apply_schema
 
 
 def _seed_minimal(engine):
+    """Insert one student, teacher, course, semester, offering, and a graded enrollment."""
     with session_scope(engine) as s:
         student = Student(name="Alice", email="alice@uni.edu")
         teacher = Teacher(name="Dr. Bob", email="bob@uni.edu")

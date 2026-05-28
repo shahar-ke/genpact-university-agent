@@ -15,10 +15,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
-    pass
+    """Declarative base shared by all university_db ORM models."""
 
 
 class Student(Base):
+    """An enrolled student; owns a set of enrollments."""
+
     __tablename__ = "students"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -29,6 +31,8 @@ class Student(Base):
 
 
 class Teacher(Base):
+    """An instructor; teaches one or more course offerings."""
+
     __tablename__ = "teachers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -39,6 +43,8 @@ class Teacher(Base):
 
 
 class Course(Base):
+    """A catalog course, identified by a unique code; offered across semesters."""
+
     __tablename__ = "courses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -49,6 +55,8 @@ class Course(Base):
 
 
 class Semester(Base):
+    """A term/year period; unique per (term, year)."""
+
     __tablename__ = "semesters"
     __table_args__ = (
         UniqueConstraint("term", "year"),
@@ -63,6 +71,8 @@ class Semester(Base):
 
 
 class CourseOffering(Base):
+    """A course taught by a teacher in a given semester; unique per (course, semester)."""
+
     __tablename__ = "course_offerings"
     __table_args__ = (UniqueConstraint("course_id", "semester_id"),)
 
@@ -78,6 +88,8 @@ class CourseOffering(Base):
 
 
 class Enrollment(Base):
+    """A student's participation in an offering; grade is NULL until graded."""
+
     __tablename__ = "enrollments"
     __table_args__ = (
         UniqueConstraint("student_id", "offering_id"),
@@ -94,6 +106,8 @@ class Enrollment(Base):
 
 
 class User(Base):
+    """A login account bound to exactly one student or teacher identity (per its role)."""
+
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("role IN ('student', 'teacher')", name="ck_user_role"),

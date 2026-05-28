@@ -11,6 +11,7 @@ SMALL = SeedConfig(teachers=4, students=12, courses=8, semesters=4, retakes=3)
 
 
 def _fresh_engine(tmp_path, name):
+    """Create a writable SQLite engine at tmp_path/name with the schema already applied."""
     engine = make_engine(f"sqlite:///{tmp_path / name}", read_only=False)
     apply_schema(engine)
     return engine

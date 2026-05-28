@@ -42,6 +42,8 @@ def _to_sqlite_readonly(url: str) -> str:
 
 
 def _register_sqlite_fk_pragma(engine: Engine) -> None:
+    """Enable `PRAGMA foreign_keys = ON` on every new SQLite connection from this engine."""
+
     @event.listens_for(engine, "connect")
     def _set_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
         cursor = dbapi_connection.cursor()
@@ -80,6 +82,7 @@ def make_engine(
 
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Session factory bound to the engine; expire_on_commit=False so objects stay usable."""
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 

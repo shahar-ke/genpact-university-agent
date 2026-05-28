@@ -10,6 +10,7 @@ _SCHEMA_PATH = Path(__file__).parent / "ddl" / "schema.sql"
 
 
 def read_schema_sql() -> str:
+    """Return the contents of the authoritative ddl/schema.sql file."""
     return _SCHEMA_PATH.read_text(encoding="utf-8")
 
 

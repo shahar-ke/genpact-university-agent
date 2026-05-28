@@ -13,6 +13,7 @@ Scale is a parameter (SeedConfig) so tests can generate tiny datasets.
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from faker import Faker
@@ -46,6 +47,11 @@ _LEVEL_NAMES = {1: "Foundations of", 2: "Intermediate", 3: "Advanced", 4: "Topic
 
 @dataclass(frozen=True)
 class SeedConfig:
+    """Row counts and per-row ranges controlling dataset scale.
+
+    Ranges are inclusive. Tests override this to generate tiny datasets.
+    """
+
     teachers: int = 10
     students: int = 50
     courses: int = 20
@@ -69,34 +75,38 @@ def _chronological_semesters(n: int, start_year: int) -> list[tuple[str, int]]:
     return seq
 
 
-def generate(session: Session, config: SeedConfig | None = None) -> dict[str, int]:
-    """Populate all tables. Returns per-table row counts."""
-    config = config or SeedConfig()
-    rng = random.Random(RANDOM_SEED)
-    fake = Faker()
-    Faker.seed(RANDOM_SEED)
-
-    # --- semesters (newest = in progress) ---
+def _seed_semesters(session: Session, config: SeedConfig) -> list[Semester]:
+    """Insert semesters in chronological order; the last one is the current/ungraded term."""
     semesters = [
         Semester(term=term, year=year)
         for term, year in _chronological_semesters(config.semesters, config.start_year)
     ]
     session.add_all(semesters)
     session.flush()
-    current_semester_id = semesters[-1].id
+    return semesters
 
-    # --- teachers (round-robin over subject areas) ---
+
+def _seed_teachers(session: Session, fake: Faker, config: SeedConfig) -> list[Teacher]:
+    """Insert teachers with faked names/emails (draws the teacher name/email faker stream)."""
     teachers = [
         Teacher(name=fake.name(), email=fake.unique.email()) for _ in range(config.teachers)
     ]
     session.add_all(teachers)
     session.flush()
-    teachers_by_subject: dict[str, list[int]] = {}
+    return teachers
+
+
+def _teachers_by_subject(teachers: list[Teacher]) -> dict[str, list[int]]:
+    """Map each subject code to its teacher ids, assigned round-robin over subject areas."""
+    by_subject: dict[str, list[int]] = {}
     for i, teacher in enumerate(teachers):
         subject = _SUBJECT_CODES[i % len(_SUBJECT_CODES)]
-        teachers_by_subject.setdefault(subject, []).append(teacher.id)
+        by_subject.setdefault(subject, []).append(teacher.id)
+    return by_subject
 
-    # --- courses (subject area, code, and a difficulty offset for grade realism) ---
+
+def _seed_courses(session: Session, config: SeedConfig) -> tuple[list[Course], dict[int, str]]:
+    """Insert courses round-robin over subjects; return them plus a course_id -> subject map."""
     courses = []
     course_meta: list[str] = []  # subject per course, parallel to `courses`
     level_counter = dict.fromkeys(_SUBJECT_CODES, 0)
@@ -111,9 +121,20 @@ def generate(session: Session, config: SeedConfig | None = None) -> dict[str, in
     session.add_all(courses)
     session.flush()
     course_subject = dict(zip([c.id for c in courses], course_meta, strict=True))
-    course_difficulty = {c.id: rng.gauss(0, 6) for c in courses}  # +harder, -easier
+    return courses, course_subject
 
-    # --- offerings: each course in a few semesters, taught by a same-subject teacher ---
+
+def _seed_offerings(
+    session: Session,
+    rng: random.Random,
+    config: SeedConfig,
+    courses: list[Course],
+    course_subject: dict[int, str],
+    teachers: list[Teacher],
+    teachers_by_subject: dict[str, list[int]],
+    semesters: list[Semester],
+) -> list[CourseOffering]:
+    """Offer each course in a few random semesters, taught by a same-subject teacher."""
     offerings = []
     lo, hi = config.offerings_per_course
     for course in courses:
@@ -129,14 +150,26 @@ def generate(session: Session, config: SeedConfig | None = None) -> dict[str, in
             )
     session.add_all(offerings)
     session.flush()
+    return offerings
 
-    # --- students (each with a consistent skill bias) ---
+
+def _seed_students(session: Session, fake: Faker, config: SeedConfig) -> list[Student]:
+    """Insert students with faked names/emails (draws the student name/email faker stream)."""
     students = [
         Student(name=fake.name(), email=fake.unique.email()) for _ in range(config.students)
     ]
     session.add_all(students)
     session.flush()
-    student_skill = {s.id: rng.gauss(0, 7) for s in students}
+    return students
+
+
+def _make_grade_fn(
+    rng: random.Random,
+    student_skill: dict[int, float],
+    course_difficulty: dict[int, float],
+    current_semester_id: int,
+) -> Callable[[int, CourseOffering], float | None]:
+    """Build the grade sampler: NULL for the current term, else a skill/difficulty-biased draw."""
 
     def grade_for(student_id: int, offering: CourseOffering) -> float | None:
         if offering.semester_id == current_semester_id:
@@ -144,7 +177,22 @@ def generate(session: Session, config: SeedConfig | None = None) -> dict[str, in
         mean = GRADE_BASE_MEAN + student_skill[student_id] - course_difficulty[offering.course_id]
         return round(min(100.0, max(0.0, rng.gauss(mean, GRADE_STDDEV))), 1)
 
-    # --- enrollments: at most one offering per course per student (clean GPA) ---
+    return grade_for
+
+
+def _seed_enrollments(
+    session: Session,
+    rng: random.Random,
+    config: SeedConfig,
+    students: list[Student],
+    offerings: list[CourseOffering],
+    grade_for: Callable[[int, CourseOffering], float | None],
+) -> tuple[list[Enrollment], set[tuple[int, int]], dict[int, list[int]]]:
+    """Enroll each student in distinct courses (one offering per course, for a clean GPA).
+
+    Returns the enrollments plus bookkeeping the retake step reuses: the set of
+    (student_id, offering_id) pairs already used, and each student's enrolled course ids.
+    """
     enrollments = []
     enrolled_pairs: set[tuple[int, int]] = set()
     student_courses: dict[int, list[int]] = {}
@@ -169,8 +217,25 @@ def generate(session: Session, config: SeedConfig | None = None) -> dict[str, in
                 break
     session.add_all(enrollments)
     session.flush()
+    return enrollments, enrolled_pairs, student_courses
 
-    # --- retakes: same course, a different graded offering ---
+
+def _seed_retakes(
+    session: Session,
+    rng: random.Random,
+    config: SeedConfig,
+    students: list[Student],
+    offerings: list[CourseOffering],
+    current_semester_id: int,
+    enrolled_pairs: set[tuple[int, int]],
+    student_courses: dict[int, list[int]],
+    grade_for: Callable[[int, CourseOffering], float | None],
+) -> list[Enrollment]:
+    """Add retakes: a second graded offering of a course the student already took.
+
+    Best-effort up to config.retakes, with a bounded number of attempts so a small
+    dataset that runs out of valid candidates still terminates.
+    """
     graded_by_course: dict[int, list[CourseOffering]] = {}
     for offering in offerings:
         if offering.semester_id != current_semester_id:
@@ -198,8 +263,13 @@ def generate(session: Session, config: SeedConfig | None = None) -> dict[str, in
         )
     session.add_all(retakes)
     session.flush()
+    return retakes
 
-    # --- users: one login per student and per teacher ---
+
+def _seed_users(
+    session: Session, fake: Faker, students: list[Student], teachers: list[Teacher]
+) -> list[User]:
+    """Create one login per student then per teacher (draws the username faker stream)."""
     users = [
         User(username=fake.unique.user_name(), role="student", student_id=s.id) for s in students
     ]
@@ -208,6 +278,56 @@ def generate(session: Session, config: SeedConfig | None = None) -> dict[str, in
     ]
     session.add_all(users)
     session.flush()
+    return users
+
+
+def generate(session: Session, config: SeedConfig | None = None) -> dict[str, int]:
+    """Populate all tables with a deterministic dataset; return per-table row counts.
+
+    Runs the seeding steps in dependency order (semesters -> teachers -> courses ->
+    offerings -> students -> enrollments -> retakes -> users). The rng and faker are
+    seeded once here and threaded through the steps, so the sequence of random draws
+    is fixed and the result is reproducible.
+    """
+    config = config or SeedConfig()
+    rng = random.Random(RANDOM_SEED)
+    fake = Faker()
+    Faker.seed(RANDOM_SEED)
+
+    semesters = _seed_semesters(session, config)
+    current_semester_id = semesters[-1].id
+
+    teachers = _seed_teachers(session, fake, config)
+    teachers_by_subject = _teachers_by_subject(teachers)
+
+    courses, course_subject = _seed_courses(session, config)
+    course_difficulty = {c.id: rng.gauss(0, 6) for c in courses}  # +harder, -easier
+
+    offerings = _seed_offerings(
+        session, rng, config, courses, course_subject, teachers, teachers_by_subject, semesters
+    )
+
+    students = _seed_students(session, fake, config)
+    student_skill = {s.id: rng.gauss(0, 7) for s in students}
+
+    grade_for = _make_grade_fn(rng, student_skill, course_difficulty, current_semester_id)
+
+    enrollments, enrolled_pairs, student_courses = _seed_enrollments(
+        session, rng, config, students, offerings, grade_for
+    )
+    retakes = _seed_retakes(
+        session,
+        rng,
+        config,
+        students,
+        offerings,
+        current_semester_id,
+        enrolled_pairs,
+        student_courses,
+        grade_for,
+    )
+
+    users = _seed_users(session, fake, students, teachers)
 
     return {
         "teachers": len(teachers),
