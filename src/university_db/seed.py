@@ -28,6 +28,7 @@ from university_db.models import (
     Teacher,
     User,
 )
+from university_db.roles import Role
 
 RANDOM_SEED = 42
 GRADE_BASE_MEAN = 78.0
@@ -269,13 +270,14 @@ def _seed_retakes(
 def _seed_users(
     session: Session, fake: Faker, students: list[Student], teachers: list[Teacher]
 ) -> list[User]:
-    """Create one login per student then per teacher (draws the username faker stream)."""
+    """Create one login per student then per teacher, plus a single admin login."""
     users = [
-        User(username=fake.unique.user_name(), role="student", student_id=s.id) for s in students
+        User(username=fake.unique.user_name(), role=Role.STUDENT, student_id=s.id) for s in students
     ]
     users += [
-        User(username=fake.unique.user_name(), role="teacher", teacher_id=t.id) for t in teachers
+        User(username=fake.unique.user_name(), role=Role.TEACHER, teacher_id=t.id) for t in teachers
     ]
+    users.append(User(username="admin", role=Role.ADMIN))
     session.add_all(users)
     session.flush()
     return users

@@ -106,14 +106,15 @@ class Enrollment(Base):
 
 
 class User(Base):
-    """A login account bound to exactly one student or teacher identity (per its role)."""
+    """A login account: a student or teacher is bound to that identity; an admin to neither."""
 
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('student', 'teacher')", name="ck_user_role"),
+        CheckConstraint("role IN ('student', 'teacher', 'admin')", name="ck_user_role"),
         CheckConstraint(
             "(role = 'student' AND student_id IS NOT NULL AND teacher_id IS NULL) OR "
-            "(role = 'teacher' AND teacher_id IS NOT NULL AND student_id IS NULL)",
+            "(role = 'teacher' AND teacher_id IS NOT NULL AND student_id IS NULL) OR "
+            "(role = 'admin'   AND student_id IS NULL AND teacher_id IS NULL)",
             name="ck_user_identity",
         ),
     )

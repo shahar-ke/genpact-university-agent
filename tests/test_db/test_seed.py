@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 
 from university_db.engine import make_engine, session_scope
 from university_db.models import CourseOffering, Enrollment, Semester, User
+from university_db.roles import Role
 from university_db.schema import apply_schema
 from university_db.seed import SeedConfig, generate
 
@@ -25,7 +26,7 @@ def test_counts_match_config(tmp_path):
     assert counts["students"] == 12
     assert counts["courses"] == 8
     assert counts["semesters"] == 4
-    assert counts["users"] == 16  # one per student + one per teacher
+    assert counts["users"] == 17  # one per student + one per teacher + one admin
     assert counts["enrollments"] > 0
 
 
@@ -80,7 +81,11 @@ def test_users_reference_valid_identities(tmp_path):
     with session_scope(engine) as s:
         users = s.execute(select(User)).scalars().all()
     for user in users:
-        if user.role == "student":
+        if user.role == Role.STUDENT:
             assert user.student_id is not None and user.teacher_id is None
-        else:
+        elif user.role == Role.TEACHER:
             assert user.teacher_id is not None and user.student_id is None
+        elif user.role == Role.ADMIN:
+            assert user.student_id is None and user.teacher_id is None
+        else:
+            raise AssertionError(f"unexpected role {user.role!r}")

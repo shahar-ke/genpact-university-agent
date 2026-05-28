@@ -62,12 +62,13 @@ CREATE TABLE enrollments (
 CREATE TABLE users (
     id         INTEGER PRIMARY KEY,
     username   TEXT NOT NULL UNIQUE,      -- login identifier, e.g. 'alice'
-    role       TEXT NOT NULL CHECK (role IN ('student', 'teacher')),
+    role       TEXT NOT NULL CHECK (role IN ('student', 'teacher', 'admin')),
     student_id INTEGER REFERENCES students(id),
     teacher_id INTEGER REFERENCES teachers(id),
     CHECK (
         (role = 'student' AND student_id IS NOT NULL AND teacher_id IS NULL) OR
-        (role = 'teacher' AND teacher_id IS NOT NULL AND student_id IS NULL)
+        (role = 'teacher' AND teacher_id IS NOT NULL AND student_id IS NULL) OR
+        (role = 'admin'   AND student_id IS NULL AND teacher_id IS NULL)
     )
 );
 
