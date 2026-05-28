@@ -18,12 +18,16 @@ from university_db_mcp.validation import validate_sql
 
 @dataclass(frozen=True)
 class ColumnInfo:
+    """One column of a relation: its name and SQLite declared type."""
+
     name: str
     type: str  # SQLite declared type; may be empty for view columns
 
 
 @dataclass(frozen=True)
 class RelationInfo:
+    """A queryable relation (table or scoped view) and its columns."""
+
     name: str
     columns: list[ColumnInfo]
 

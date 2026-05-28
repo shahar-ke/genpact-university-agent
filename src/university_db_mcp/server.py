@@ -35,11 +35,14 @@ from university_db_mcp.service import (
 
 @dataclass
 class ServerContext:
+    """Lifespan state shared by every tool call."""
+
     engine: Engine  # one shared read-only engine; identity is per-call, not per-connection
 
 
 @asynccontextmanager
 async def _lifespan(_server: FastMCP) -> AsyncIterator[ServerContext]:
+    """Build the shared read-only engine once and expose it for the server's lifetime."""
     yield ServerContext(engine=make_engine(read_only=True))
 
 
@@ -47,6 +50,7 @@ mcp = FastMCP("university-db", lifespan=_lifespan)
 
 
 def _engine(ctx: Context) -> Engine:
+    """Pull the shared engine out of the request's lifespan context."""
     return ctx.request_context.lifespan_context.engine
 
 
@@ -72,6 +76,7 @@ def examples() -> str:
 
 
 def main() -> None:
+    """Console-script entry point: run the FastMCP server over stdio."""
     mcp.run()
 
 
