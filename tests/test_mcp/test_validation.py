@@ -39,6 +39,7 @@ def test_rejects_forbidden_relation():
     result = validate_sql("SELECT * FROM enrollments", ALLOWLIST)
     assert not result.ok
     assert result.category == RejectionCategory.FORBIDDEN_RELATION
+    assert result.reason is not None
     assert "enrollments" in result.reason
 
 

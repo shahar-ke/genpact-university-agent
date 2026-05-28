@@ -82,7 +82,7 @@ def validate_sql(sql: str, allowlist: frozenset[str]) -> ValidationResult:
     return ValidationResult.accept()
 
 
-def _parse(sql: str) -> list[exp.Expression] | None:
+def _parse(sql: str) -> list[exp.Expr] | None:
     """Parse into statements; None on syntax error. Empty statements are dropped."""
     try:
         parsed = sqlglot.parse(sql, dialect=DIALECT)
@@ -91,7 +91,7 @@ def _parse(sql: str) -> list[exp.Expression] | None:
     return [statement for statement in parsed if statement is not None]
 
 
-def _referenced_relations(statement: exp.Expression) -> set[str]:
+def _referenced_relations(statement: exp.Expr) -> set[str]:
     """Lower-cased base tables/views referenced, excluding inline CTE names."""
     cte_names = {cte.alias.lower() for cte in statement.find_all(exp.CTE)}
     tables = {table.name.lower() for table in statement.find_all(exp.Table)}
