@@ -7,30 +7,40 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Lint & Test
+  lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+      - run: uv python install
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --extra db --extra seed --group dev
-
-      - name: Lint (ruff)
-        run: uv run ruff check .
-
-      - name: Format check (ruff)
-        run: uv run ruff format --check .
-
-      - name: Run tests
-        run: uv run pytest -v
+  test:
+    # One job per component, each installing ONLY its own dependency footprint.
+    # This makes CI enforce the package-isolation boundary: the agent job, when added,
+    # will have no sqlalchemy, so an accidental DB import there fails the build.
+    name: test-${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: db
+            extras: "--extra db --extra seed"
+            path: tests/test_db
+          - component: mcp
+            extras: "--extra db-mcp --extra seed"
+            path: tests/test_mcp
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install
+      - run: uv sync ${{ matrix.extras }} --group dev
+      - run: uv run pytest ${{ matrix.path }} -v

@@ -50,6 +50,7 @@ def _seed_known(engine):
 
 
 def _engine(tmp_path, name, *, read_only=False):
+    """Engine at tmp_path/name; schema is applied separately by each test that needs it."""
     engine = make_engine(f"sqlite:///{tmp_path / name}", read_only=read_only)
     return engine
 

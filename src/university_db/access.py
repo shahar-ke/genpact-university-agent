@@ -77,6 +77,7 @@ def _build_scope(username: str, role: str, student_id: int | None, teacher_id: i
 
 
 def _scope(username: str, role: Role, entity_id: int, views: dict[str, str]) -> Scope:
+    """Assemble a Scope whose allowlist is the public relations plus the given view names."""
     return Scope(
         username=username,
         role=role,
@@ -99,6 +100,7 @@ def _admin_scope(username: str) -> Scope:
 
 # noinspection SqlNoDataSourceInspection
 def _student_scope(username: str, student_id: int) -> Scope:
+    """Scope a student to their own enrollments (`my_enrollments`) and profile (`me`)."""
     # entity_id is a trusted integer from the users table, not free user input.
     sid = int(student_id)
     views = {
@@ -110,6 +112,7 @@ def _student_scope(username: str, student_id: int) -> Scope:
 
 # noinspection SqlNoDataSourceInspection
 def _teacher_scope(username: str, teacher_id: int) -> Scope:
+    """Scope a teacher to their own offerings, the enrollments in them, and those students."""
     tid = int(teacher_id)
     views = {
         "my_offerings": f"SELECT * FROM course_offerings WHERE teacher_id = {tid}",

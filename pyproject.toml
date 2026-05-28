@@ -15,7 +15,7 @@ dependencies = []                       # nothing mandatory
 [project.optional-dependencies]
 db      = ["sqlalchemy>=2.0"]
 seed    = ["genpact-university-agent[db]", "faker>=30"]
-db-mcp  = ["genpact-university-agent[db]", "mcp>=1.2"]
+db-mcp  = ["genpact-university-agent[db]", "mcp>=1.2", "sqlglot>=25"]
 agent   = [                             # note: NO sqlalchemy here — the whole point
     "langgraph>=0.2",
     "langchain-core>=0.3",

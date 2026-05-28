@@ -11,6 +11,8 @@ from enum import StrEnum
 
 
 class Role(StrEnum):
+    """The role vocabulary; members equal their stored string value."""
+
     STUDENT = "student"
     TEACHER = "teacher"
     ADMIN = "admin"
