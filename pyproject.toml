@@ -10,16 +10,34 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Shahar Keren" }]
-dependencies = []
+dependencies = []                       # nothing mandatory
 
 [project.optional-dependencies]
+db      = ["sqlalchemy>=2.0"]
+seed    = ["genpact-university-agent[db]", "faker>=30"]
+db-mcp  = ["genpact-university-agent[db]", "mcp>=1.2"]
+agent   = [                             # note: NO sqlalchemy here — the whole point
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+    "langchain-anthropic>=0.2",
+    "langchain-mcp-adapters>=0.1",
+    "mcp>=1.2",
+]
+all     = ["genpact-university-agent[db-mcp,seed,agent]"]
+
+[dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.24",
     "ruff>=0.6.0",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/university_agent"]
+packages = [
+    "src/university_db",
+    "src/university_db_mcp",
+    "src/university_agent",
+]
 
 [tool.ruff]
 line-length = 100
