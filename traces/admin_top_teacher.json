@@ -1,0 +1,74 @@
+{
+  "case": "admin_top_teacher",
+  "role": "admin",
+  "user_id": "admin",
+  "question": "Which teacher has the most enrolled students?",
+  "flow": {
+    "reasoning": "",
+    "in_scope": true,
+    "is_compound": false,
+    "normalized_question": "Which teacher has the maximum number of enrollments?",
+    "sql": "SELECT t.name FROM teachers t\nJOIN course_offerings co ON t.id = co.teacher_id\nJOIN enrollments e ON co.id = e.offering_id\nGROUP BY t.name\nORDER BY COUNT(e.id) DESC\nLIMIT 1",
+    "result": {
+      "status": "ok",
+      "columns": [
+        "name"
+      ],
+      "row_count": 1,
+      "rows": [
+        {
+          "name": "Allison Hill"
+        }
+      ]
+    },
+    "answer": "Allison Hill \n"
+  },
+  "node_steps": [
+    {
+      "node": "load_schema",
+      "update": {
+        "schema_text": "- course_offerings(id, course_id, teacher_id, semester_id)\n- courses(id, code, title)\n- enrollments(id, student_id, offering_id, grade)\n- semesters(id, term, year)\n- students(id, name, email)\n- teachers(id, name, email)"
+      }
+    },
+    {
+      "node": "understand_question",
+      "update": {
+        "reasoning": "",
+        "in_scope": true,
+        "is_compound": false,
+        "normalized_question": "Which teacher has the maximum number of enrollments?"
+      }
+    },
+    {
+      "node": "generate_sql",
+      "update": {
+        "attempt_num": 1,
+        "sql": "SELECT t.name FROM teachers t\nJOIN course_offerings co ON t.id = co.teacher_id\nJOIN enrollments e ON co.id = e.offering_id\nGROUP BY t.name\nORDER BY COUNT(e.id) DESC\nLIMIT 1"
+      }
+    },
+    {
+      "node": "execute_sql",
+      "update": {
+        "result": {
+          "status": "ok",
+          "columns": [
+            "name"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "name": "Allison Hill"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "node": "synthesize_answer",
+      "update": {
+        "answer": "Allison Hill \n"
+      }
+    }
+  ],
+  "langsmith_trace_url": "https://smith.langchain.com/o/ad719427-7c21-4103-a771-901c2c25af4b/projects/p/738ff6ce-98a6-4c46-8724-c23d7972331e/r/019e734c-40d1-7291-8a4f-3b84514cd86f?poll=true"
+}

@@ -27,6 +27,9 @@ agent   = [                             # note: NO sqlalchemy here — the whole
     # then set LLM_PROVIDER / LLM_MODEL. See README.
 ]
 cli     = ["genpact-university-agent[db,agent]", "python-dotenv>=1.0"]  # demo composition root
+# Web demo+validation UI: composition root over DB + agent, so it pulls the full [all] set
+# (the agent path spawns the MCP server, which needs db-mcp) plus Streamlit.
+web     = ["genpact-university-agent[all]", "streamlit>=1.40", "pandas>=2.0", "streamlit-aggrid>=1.0"]
 eval    = ["genpact-university-agent[all]", "langchain-anthropic>=0.2", "langchain-openai>=0.2"]
 all     = ["genpact-university-agent[db-mcp,seed,agent,cli]"]
 
@@ -34,6 +37,8 @@ all     = ["genpact-university-agent[db-mcp,seed,agent,cli]"]
 university-init-db = "university_db.init_db:main"
 university-db-mcp = "university_db_mcp.server:main"
 university-agent = "university_cli.app:main"
+university-web = "university_web.launcher:main"
+university-web-traces = "university_web.traces:main"
 
 [dependency-groups]
 dev = [
@@ -49,6 +54,7 @@ packages = [
     "src/university_db_mcp",
     "src/university_agent",
     "src/university_cli",
+    "src/university_web",
 ]
 
 [tool.ruff]

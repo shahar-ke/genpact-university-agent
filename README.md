@@ -1,37 +1,129 @@
 # University QA Agent
 
-A LangGraph-based question-answering agent over a university SQL database. Translates natural-language questions into SQL, executes them, and returns human-readable answers.
+A LangGraph agent that answers natural-language questions about a university database. It
+translates a question into SQL, runs it through a row-level-secured MCP server, and returns a
+human-readable answer — with per-user access control, self-correction, and full tracing.
 
-> Technical home assignment.
+Built for the [home task](<./HW Task.html.pdf>).
 
-## Status
+## Project structure
 
-Skeleton — implementation in progress.
+Six components, each with its own in-depth README (design, key files, libraries):
 
-## Stack
+- [src/university_db/](src/university_db/README.md) — owns the university data (courses, people,
+  enrollments, grades) and the rules for who may see what: a student sees only their own record,
+  a teacher their classes, an admin everything.
+- [src/university_db_mcp/](src/university_db_mcp/README.md) — the guarded gateway to that data.
+  The only component allowed to touch the database; it enforces each user's access boundary and
+  refuses anything unsafe.
+- [src/university_agent/](src/university_agent/README.md) — the brains. Turns a plain-English
+  question into an answer: judges whether it's in scope, fetches the data through the gateway,
+  and self-corrects if a query fails.
+- [src/university_cli/](src/university_cli/README.md) — one of two ways to use it: a terminal
+  front end. Log in as a sample user and ask questions one at a time.
+- [src/university_web/](src/university_web/README.md) — the other way to use it: a Streamlit web
+  app over the same agent. A scoped query tool (role → user → question → answer + SQL + rows +
+  trace) plus a filterable god-mode data browser for validating answers.
+- [evals/](evals/README.md) — quality measurement. A fixed test set that scores how well
+  different models answer the right questions and decline the wrong ones, so changes can be
+  compared.
 
-- **Python** 3.11+
-- **LangGraph** — agent orchestration
-- **SQL** (SQLite for local dev; portable to Postgres)
-- **Pytest** — testing
-- **Ruff** — lint + format
+## Prerequisites
 
-## Layout
+- **[uv](https://docs.astral.sh/uv/)** — manages the Python environment and dependencies.
+- **Python 3.11+**.
+- **An LLM provider.** Pick one:
+  - **Local (default) — [Ollama](https://ollama.com/).** Free, no API key, runs on your machine.
+    Install it (see the [download page](https://ollama.com/download) and
+    [docs](https://github.com/ollama/ollama/blob/main/README.md)), then start the server and pull
+    the default model:
+    ```bash
+    ollama serve            # start the local server (skip if it already runs as a service)
+    ollama pull gemma2:9b   # the default model
+    ```
+  - **Commercial (optional) — Anthropic or OpenAI.** No Ollama needed. Install the provider
+    package and select it in `.env` (see [Installation](#installation)); the values below are
+    what enable the commercial path:
+    ```bash
+    uv pip install langchain-anthropic   # or: langchain-openai
+    ```
+    ```dotenv
+    # .env
+    LLM_PROVIDER=anthropic
+    LLM_MODEL=claude-sonnet-4-6
+    ANTHROPIC_API_KEY=sk-ant-...         # or OPENAI_API_KEY for OpenAI
+    ```
 
-```
-src/university_agent/    # agent code
-tests/                   # unit tests
-.github/workflows/       # CI
-```
-
-## Development
+## Installation
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-pytest
-ruff check .
-ruff format .
+uv sync --extra all --group dev                                 # full local install
+cp .env.example .env                                            # configure LLM (+ optional LangSmith)
+uv run university-init-db --db-url "sqlite:///./university.db"   # create + seed the database
 ```
+
+`.env` is loaded automatically and is where you choose the LLM: it ships set to the local Ollama
+default (`LLM_PROVIDER=ollama`, `LLM_MODEL=gemma2:9b`). To switch to a commercial model, set
+`LLM_PROVIDER` / `LLM_MODEL` and the matching API key per [Prerequisites](#prerequisites).
+
+## Usage
+
+Two front ends over the same agent — a terminal CLI and a Streamlit web app.
+
+### CLI
+```bash
+# interactive: pick a role, pick a user, then ask questions one at a time
+uv run university-agent
+
+# non-interactive: ask one question and exit
+uv run university-agent --user admin --question "which teacher has the most enrolled students?"
+```
+
+### Web app (demo & validation)
+A Streamlit UI with two pages: a **Data view** (read-only, god-mode browser with per-column
+sort + filter, for validating answers against ground truth) and a **Query tool** (the scoped
+agent path: pick role → user → ask → see answer, generated SQL, result rows, and trace link).
+Load the working DB from the fixed fixture or a fresh seed via the sidebar.
+
+```bash
+uv sync --extra web      # install the web deps (Streamlit + Ag-Grid)
+uv run university-web     # launch (or: uv run streamlit run src/university_web/app.py)
+
+# write committed execution traces (per-node flow as JSON under traces/)
+uv run university-web-traces
+
+# optional: export the full LangSmith run trees (needs LANGSMITH_API_KEY) into traces/langsmith/
+uv run university-web-traces --from-langsmith
+```
+
+### Tracing (LangSmith)
+Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` in `.env`. Every run is traced end to end
+(User → nodes → SQL → DB results → answer), tagged with the user/role; the CLI prints a link to
+each question's trace.
+
+### Tests & lint
+```bash
+uv run pytest          # full suite
+uv run ruff check . && uv run ruff format --check .
+```
+
+### Evaluation
+```bash
+ollama pull llama3.1:8b                       # + ANTHROPIC_API_KEY / OPENAI_API_KEY in .env
+uv run python -m evals.run_eval               # writes evals/report.md (per-topic + total per model)
+```
+
+## How it works
+
+```
+User question
+  → LangGraph agent   (understand → generate SQL → execute → synthesize)
+      → MCP server     (the only component with DB access; scope-enforced, read-only)
+          → SQLite     (per-user TEMP views)
+```
+
+The agent never touches the database or SQL libraries directly — it talks to an MCP server
+over JSON-RPC and discovers its tools. Identity is resolved **server-side**: a student sees
+only their own enrollments, a teacher their courses, an admin everything. The LLM never sees
+the user id, and a SQL validator (single read-only `SELECT` + table allowlist) plus a
+read-only connection make data leaks impossible regardless of what the model generates.

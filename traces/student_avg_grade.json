@@ -1,0 +1,74 @@
+{
+  "case": "student_avg_grade",
+  "role": "student",
+  "user_id": "ddavis",
+  "question": "What is my average grade?",
+  "flow": {
+    "reasoning": "",
+    "in_scope": true,
+    "is_compound": false,
+    "normalized_question": "What is the average grade of my enrollments?",
+    "sql": "SELECT AVG(grade) FROM my_enrollments WHERE grade IS NOT NULL",
+    "result": {
+      "status": "ok",
+      "columns": [
+        "AVG(grade)"
+      ],
+      "row_count": 1,
+      "rows": [
+        {
+          "AVG(grade)": 81.06666666666666
+        }
+      ]
+    },
+    "answer": "The average grade of your enrollments is 81.07.  \n"
+  },
+  "node_steps": [
+    {
+      "node": "load_schema",
+      "update": {
+        "schema_text": "- course_offerings(id, course_id, teacher_id, semester_id)\n- courses(id, code, title)\n- me(id, name, email)\n- my_enrollments(id, student_id, offering_id, grade)\n- semesters(id, term, year)\n- teachers(id, name, email)"
+      }
+    },
+    {
+      "node": "understand_question",
+      "update": {
+        "reasoning": "",
+        "in_scope": true,
+        "is_compound": false,
+        "normalized_question": "What is the average grade of my enrollments?"
+      }
+    },
+    {
+      "node": "generate_sql",
+      "update": {
+        "attempt_num": 1,
+        "sql": "SELECT AVG(grade) FROM my_enrollments WHERE grade IS NOT NULL"
+      }
+    },
+    {
+      "node": "execute_sql",
+      "update": {
+        "result": {
+          "status": "ok",
+          "columns": [
+            "AVG(grade)"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "AVG(grade)": 81.06666666666666
+            }
+          ]
+        }
+      }
+    },
+    {
+      "node": "synthesize_answer",
+      "update": {
+        "answer": "The average grade of your enrollments is 81.07.  \n"
+      }
+    }
+  ],
+  "langsmith_trace_url": "https://smith.langchain.com/o/ad719427-7c21-4103-a771-901c2c25af4b/projects/p/738ff6ce-98a6-4c46-8724-c23d7972331e/r/019e734b-8cce-7111-bd2e-b2ee1f9908f7?poll=true"
+}
