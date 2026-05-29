@@ -27,6 +27,7 @@ agent   = [                             # note: NO sqlalchemy here — the whole
     # then set LLM_PROVIDER / LLM_MODEL. See README.
 ]
 cli     = ["genpact-university-agent[db,agent]", "python-dotenv>=1.0"]  # demo composition root
+eval    = ["genpact-university-agent[all]", "langchain-anthropic>=0.2", "langchain-openai>=0.2"]
 all     = ["genpact-university-agent[db-mcp,seed,agent,cli]"]
 
 [project.scripts]

@@ -58,6 +58,9 @@ secrets/
 .langgraph/
 .langsmith/
 
+# Generated eval reports (regenerate with: python -m evals.run_eval)
+evals/report*.md
+
 # Logs
 *.log
 
