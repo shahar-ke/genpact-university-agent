@@ -122,8 +122,11 @@ uv run ruff check . && uv run ruff format --check .
 ### Evaluation
 ```bash
 ollama pull llama3.1:8b                       # + ANTHROPIC_API_KEY / OPENAI_API_KEY in .env
-uv run python -m evals.run_eval               # writes evals/report.md (per-topic + total per model)
+uv run python -m evals.run_eval               # writes a per-topic + total report per model
+uv run python -m evals.run_eval --only claude-sonnet --out evals/report.claude.md  # one model
 ```
+The committed [`evals/leaderboard.md`](evals/leaderboard.md) is the stable summary (cases + model
+leaderboard); the generated `report.<model>.md` files (git-ignored) hold the full per-case detail.
 
 ## How it works
 
@@ -143,6 +146,22 @@ read-only connection make data leaks impossible regardless of what the model gen
 A user cannot access data they are not allowed to — enforced below the LLM, not left to it.
 Though not called out in the brief, this drove much of the design; see
 [DESIGN.md §1](DESIGN.md#1-a-user-must-never-see-data-which-they-are-not-allowed-to-see).
+
+### Evaluation at a glance
+Quality is measured by a fixed test set — **50 cases across 7 topics** (aggregation, filtering,
+joins, multi_step, access_control, relevance, compound) over the committed `evals/fixture.sql`,
+scored per-topic and total. The committed leaderboard is
+[`evals/leaderboard.md`](evals/leaderboard.md):
+
+| Model | Total | Notes |
+|---|---|---|
+| claude-sonnet (`claude-sonnet-4-6`) | 45/50 | near-perfect on the SQL topics |
+| gpt-5.4-mini | 41/50 | fastest of the three |
+| gemma2:9b (local) | 33/50 | strong on aggregation/filtering; weaker on joins / multi-step |
+
+No model leaked data on any access-control case — scope is enforced server-side, so safety is
+independent of model quality. Per-model, per-case detail lives in the generated `report.<model>.md`
+files (regenerate with `python -m evals.run_eval`; see [Evaluation](#evaluation)).
 
 ## Home Task Deliverables
 
@@ -257,9 +276,10 @@ LIMIT 1
 > I couldn't form a valid query for that after several attempts. Last issue: no such column: t.name.
 
 More example outputs:
-- **`evals/report.md`** — every one of the 50 eval cases as *question → agent SQL → answer*, per
-  model, scored against ground truth (see [Evaluation](#evaluation)). Includes the off-topic /
-  access-control cases where the agent declines.
+- **[`evals/leaderboard.md`](evals/leaderboard.md)** — the committed eval summary (cases + model
+  leaderboard). The generated `report.<model>.md` files add every one of the 50 cases as
+  *question → agent SQL → answer*, scored against ground truth, including the off-topic /
+  access-control declines (regenerate via [Evaluation](#evaluation)).
 - **`traces/*.json`** — the compact per-node execution traces alongside the full LangSmith exports
   (see [Execution traces](#execution-traces-committed-artifact)).
 - **`db://examples`** — the canonical sample queries the MCP server advertises to the agent.
