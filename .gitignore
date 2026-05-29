@@ -63,6 +63,3 @@ evals/report*.md
 
 # Logs
 *.log
-
-# Homework task PDF (private — not for public repo)
-HW Task.html.pdf
