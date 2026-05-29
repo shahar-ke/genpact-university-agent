@@ -28,9 +28,17 @@ EXAMPLES_URI = "db://examples"
 class Gateway(Protocol):
     """The interface graph nodes use; a fake implementing this is enough for tests."""
 
-    async def get_schema(self, user_id: str) -> dict[str, Any]: ...
-    async def execute_sql(self, user_id: str, sql: str) -> dict[str, Any]: ...
-    async def get_examples(self) -> str: ...
+    async def get_schema(self, user_id: str) -> dict[str, Any]:
+        """Return the relations/columns user_id may query (the MCP accessible-schema tool)."""
+        ...
+
+    async def execute_sql(self, user_id: str, sql: str) -> dict[str, Any]:
+        """Execute sql as user_id; returns the structured result (ok / rejected / error)."""
+        ...
+
+    async def get_examples(self) -> str:
+        """Return the example-queries resource used to steer SQL generation."""
+        ...
 
 
 def _parse(result: Any) -> dict[str, Any]:

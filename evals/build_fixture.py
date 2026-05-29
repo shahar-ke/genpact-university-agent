@@ -19,6 +19,7 @@ EVAL_CONFIG = SeedConfig(teachers=3, students=8, courses=6, semesters=3, retakes
 
 
 def main() -> None:
+    """Seed a small deterministic DB from EVAL_CONFIG and dump it to fixture.sql."""
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "eval.db"
         engine = make_engine(f"sqlite:///{db_path}", read_only=False)

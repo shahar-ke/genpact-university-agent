@@ -27,6 +27,7 @@ _BAD_TOPICS = {"access_control", "relevance"}
 
 
 def category_of(topic: str) -> str:
+    """Map a topic to its scoring category: 'bad' (must decline), 'compound', or 'good'."""
     if topic in _BAD_TOPICS:
         return "bad"
     if topic == "compound":
@@ -36,6 +37,8 @@ def category_of(topic: str) -> str:
 
 @dataclass(frozen=True)
 class EvalCase:
+    """One eval case. ground_truth_sql: god-mode SQL for good-path scoring (may use :username)."""
+
     id: str
     role: str  # student | teacher | admin
     topic: str

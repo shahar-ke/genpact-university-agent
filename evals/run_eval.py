@@ -43,6 +43,7 @@ MODELS = [
 
 
 def _model_available(provider: str, model: str) -> bool:
+    """True if the model can actually run now: Ollama model pulled, or provider API key set."""
     if provider == "ollama":
         try:
             out = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10)
@@ -57,6 +58,7 @@ def _model_available(provider: str, model: str) -> bool:
 
 
 def _load_fixture(db_path: Path) -> None:
+    """Create a fresh SQLite DB at db_path by executing the committed fixture.sql dump."""
     con = sqlite3.connect(db_path)
     con.executescript(FIXTURE.read_text(encoding="utf-8"))
     con.commit()
@@ -64,26 +66,39 @@ def _load_fixture(db_path: Path) -> None:
 
 
 def _resolve_username(engine, role: str) -> str:
+    """Pick a concrete fixture user for a case's role ('admin' is the fixed admin login)."""
     if role == "admin":
         return "admin"
     return list_users_by_role(engine, Role(role), limit=1)[0]
 
 
 def _norm(value: Any) -> Any:
+    """Round floats to 2dp so god-mode and agent values compare equal despite tiny drift."""
     return round(value, 2) if isinstance(value, float) else value
 
 
 def _flatten(rows: list[Any]) -> set[Any]:
+    """Collapse rows (dicts from the agent, or tuples from sqlite) into a flat set of cells.
+
+    Scoring compares value *membership*, not shape — so column order/labels don't matter.
+    Nulls are dropped and floats normalized (see _norm).
+    """
     values: set[Any] = set()
     for row in rows:
-        cells = row.values() if isinstance(row, dict) else row
-        for cell in cells if isinstance(cells, list | tuple | type({}.values())) else [cells]:
+        if isinstance(row, dict):
+            cells: Any = row.values()
+        elif isinstance(row, list | tuple):
+            cells = row
+        else:
+            cells = [row]
+        for cell in cells:
             if cell is not None:
                 values.add(_norm(cell))
     return values
 
 
 def _ground_truth(db_path: Path, case: EvalCase, username: str) -> set[Any]:
+    """Run the case's god-mode SQL to get expected values; empty for non-good (bad/compound)."""
     if category_of(case.topic) != "good":
         return set()
     con = sqlite3.connect(db_path)
@@ -96,6 +111,11 @@ def _ground_truth(db_path: Path, case: EvalCase, username: str) -> set[Any]:
 
 
 def _score(case: EvalCase, state: dict[str, Any], expected: set[Any]) -> bool:
+    """Pass/fail for one case by category.
+
+    compound -> agent routed to the one-at-a-time reply; bad -> agent did NOT return a
+    successful data result (graceful refusal); good -> agent's values cover every expected one.
+    """
     category = category_of(case.topic)
     answer = (state.get("answer") or "").lower()
     if category == "compound":
@@ -108,6 +128,11 @@ def _score(case: EvalCase, state: dict[str, Any], expected: set[Any]) -> bool:
 
 
 async def _run_model(cases: list[EvalCase], engine, db_path: Path, db_url: str) -> list[dict]:
+    """Run every case against the current model; return a per-case record (ok/state/timing).
+
+    Uses one MCP connection (one server subprocess) for all of a model's cases, reusing the
+    compiled graph and LLM. The currently selected model comes from LLM_PROVIDER/LLM_MODEL.
+    """
     out = []
     async with connect(db_url) as gateway:  # one MCP connection for this model's cases
         graph = build_graph()
@@ -136,8 +161,8 @@ async def _run_model(cases: list[EvalCase], engine, db_path: Path, db_url: str) 
     return out
 
 
-def _render_report(results: dict[str, list[dict]], skipped: list[str]) -> str:
-    topics = list(TOPICS)
+def _render_intro(skipped: list[str]) -> list[str]:
+    """Report header: dataset line, the topic glossary, the scoring note, and any skipped models."""
     lines = [
         "# Evaluation report",
         "",
@@ -154,10 +179,15 @@ def _render_report(results: dict[str, list[dict]], skipped: list[str]) -> str:
     )
     if skipped:
         lines.append(f"\nSkipped (unavailable): {', '.join(skipped)}.")
+    return lines
 
+
+def _render_score_table(results: dict[str, list[dict]]) -> list[str]:
+    """One summary row per model: total pass-rate, per-topic pass-rate, and mean latency."""
+    topics = list(TOPICS)
     header = "| Model | Total | " + " | ".join(topics) + " | Latency (s) |"
     sep = "|---|---|" + "|".join(["---"] * len(topics)) + "|---|"
-    lines += ["", "## Scores", "", header, sep]
+    lines = ["", "## Scores", "", header, sep]
     for label, rows in results.items():
         cells = []
         for topic in topics:
@@ -166,7 +196,12 @@ def _render_report(results: dict[str, list[dict]], skipped: list[str]) -> str:
         total = f"{sum(r['ok'] for r in rows)}/{len(rows)}"
         avg = sum(r["elapsed"] for r in rows) / len(rows) if rows else 0
         lines.append(f"| {label} | {total} | " + " | ".join(cells) + f" | {avg:.1f} |")
+    return lines
 
+
+def _render_detail_tables(results: dict[str, list[dict]]) -> list[str]:
+    """Per-model detail table: each case's pass mark, the agent's SQL, and its answer."""
+    lines: list[str] = []
     for label, rows in results.items():
         lines += [
             "",
@@ -181,10 +216,52 @@ def _render_report(results: dict[str, list[dict]], skipped: list[str]) -> str:
             ans = (state.get("answer") or "").replace("\n", " ").replace("|", "/")[:70]
             mark = "✅" if r["ok"] else "❌"
             lines.append(f"| {case.id} | {case.topic} | {mark} | `{sql}` | {ans} |")
+    return lines
+
+
+def _render_report(results: dict[str, list[dict]], skipped: list[str]) -> str:
+    """Assemble the full Markdown report from its intro, score table, and detail sections."""
+    lines = _render_intro(skipped) + _render_score_table(results) + _render_detail_tables(results)
     return "\n".join(lines) + "\n"
 
 
+def _select_cases(case_ids: str | None, limit: int | None) -> list[EvalCase]:
+    """Filter CASES by an explicit comma-separated id list and/or a leading-N limit."""
+    cases = CASES
+    if case_ids:
+        wanted = {cid.strip() for cid in case_ids.split(",")}
+        cases = [c for c in cases if c.id in wanted]
+    if limit:
+        cases = cases[:limit]
+    return cases
+
+
+def _select_models(only: str | None) -> list[tuple[str, str, str]]:
+    """Filter MODELS to the comma-separated labels in `only` (all models when None)."""
+    labels = {label.strip() for label in only.split(",")} if only else None
+    return [m for m in MODELS if labels is None or m[0] in labels]
+
+
+def _run_models(
+    models: list[tuple[str, str, str]], cases: list[EvalCase], engine, db_path: Path, db_url: str
+) -> tuple[dict[str, list[dict]], list[str]]:
+    """Run each available model over the cases; return (results by label, skipped labels)."""
+    results: dict[str, list[dict]] = {}
+    skipped: list[str] = []
+    for label, provider, model in models:
+        if not _model_available(provider, model):
+            skipped.append(label)
+            continue
+        # The LLM factory reads these env vars, so selecting a model = setting them.
+        os.environ["LLM_PROVIDER"] = provider
+        os.environ["LLM_MODEL"] = model
+        print(f"Running {label} ...")
+        results[label] = asyncio.run(_run_model(cases, engine, db_path, db_url))
+    return results, skipped
+
+
 def main() -> None:
+    """CLI: build the fixture DB, run selected models over selected cases, write the report."""
     parser = argparse.ArgumentParser(description="Run the agent evaluation")
     parser.add_argument("--limit", type=int, default=None, help="run only the first N cases")
     parser.add_argument("--only", default=None, help="comma-separated model labels to run")
@@ -193,30 +270,15 @@ def main() -> None:
     args = parser.parse_args()
     load_dotenv(override=True)  # .env is authoritative for the harness (beats empty env vars)
 
-    cases = CASES
-    if args.cases:
-        wanted = {cid.strip() for cid in args.cases.split(",")}
-        cases = [c for c in cases if c.id in wanted]
-    if args.limit:
-        cases = cases[: args.limit]
-    only = {label.strip() for label in args.only.split(",")} if args.only else None
-    models = [m for m in MODELS if only is None or m[0] in only]
+    cases = _select_cases(args.cases, args.limit)
+    models = _select_models(args.only)
 
     tmp = Path(tempfile.mkdtemp()) / "eval.db"
     _load_fixture(tmp)
     db_url = f"sqlite:///{tmp}"
     engine = make_engine(db_url, read_only=True)
 
-    results: dict[str, list[dict]] = {}
-    skipped: list[str] = []
-    for label, provider, model in models:
-        if not _model_available(provider, model):
-            skipped.append(label)
-            continue
-        os.environ["LLM_PROVIDER"] = provider
-        os.environ["LLM_MODEL"] = model
-        print(f"Running {label} ...")
-        results[label] = asyncio.run(_run_model(cases, engine, tmp, db_url))
+    results, skipped = _run_models(models, cases, engine, tmp, db_url)
 
     out = Path(args.out)
     out.write_text(_render_report(results, skipped), encoding="utf-8")

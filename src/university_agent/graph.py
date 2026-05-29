@@ -2,7 +2,8 @@
 
 Topology:
     load_schema -> understand_question
-        -> capabilities_reply (END)         # off-topic
+        -> capabilities_reply (END)          # off-topic
+        -> single_question_reply (END)       # compound (multi-part) question
         -> generate_sql
              -> END                          # unanswerable (access / not modeled)
              -> execute_sql
