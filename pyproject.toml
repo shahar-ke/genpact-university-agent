@@ -36,9 +36,8 @@ all     = ["genpact-university-agent[db-mcp,seed,agent,cli]"]
 [project.scripts]
 university-init-db = "university_db.init_db:main"
 university-db-mcp = "university_db_mcp.server:main"
-university-agent = "university_cli.app:main"
-university-web = "university_web.launcher:main"
-university-web-traces = "university_web.traces:main"
+university-agent-cli = "university_cli.app:main"
+university-agent-web = "university_web.launcher:main"
 
 [dependency-groups]
 dev = [

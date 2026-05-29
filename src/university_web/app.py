@@ -7,7 +7,7 @@ Two deliberately separate PAGES over one SQLite file (switch via the sidebar nav
 - Query tool (scoped agent path): the real agent (role -> user -> question), with identity
   enforced server-side by the MCP server. A student sees only their own data; an admin all.
 
-Run: `uv run streamlit run src/university_web/app.py` (or the `university-web` console script).
+Run: `uv run streamlit run src/university_web/app.py` (or `uv run university-agent-web`).
 """
 
 from __future__ import annotations

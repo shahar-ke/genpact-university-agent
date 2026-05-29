@@ -1,7 +1,7 @@
 """Console-script entry point: launch the Streamlit app.
 
-`university-web` is sugar for `streamlit run src/university_web/app.py`; any extra CLI args
-are forwarded to streamlit (e.g. `university-web --server.port 9000`).
+`university-agent-web` is sugar for `streamlit run src/university_web/app.py`; any extra CLI
+args are forwarded to streamlit (e.g. `university-agent-web --server.port 9000`).
 """
 
 from __future__ import annotations

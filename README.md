@@ -66,17 +66,27 @@ uv run university-init-db --db-url "sqlite:///./university.db"   # create + seed
 default (`LLM_PROVIDER=ollama`, `LLM_MODEL=gemma2:9b`). To switch to a commercial model, set
 `LLM_PROVIDER` / `LLM_MODEL` and the matching API key per [Prerequisites](#prerequisites).
 
+### Loading data: fixed vs. generated
+- **Fixed (canonical)** — `evals/fixture.sql` is a committed SQL dump: the same bytes on every
+  machine, independent of seed logic or library versions. The eval and the web app's "fixed"
+  option load it. Use it when answers must be verifiable against a known dataset.
+- **Generated** — `university-init-db` (and `seed.py`'s `generate(SeedConfig(...))`) build a fresh
+  dataset of a chosen size. It's seeded (reproducible within one environment) but exact values
+  follow the installed Faker version — so it's for new/larger data, not a cross-machine reference.
+
 ## Usage
 
 Two front ends over the same agent — a terminal CLI and a Streamlit web app.
 
 ### CLI
+Ask one question and exit (fully specified — no prompts):
 ```bash
-# interactive: pick a role, pick a user, then ask questions one at a time
-uv run university-agent
-
-# non-interactive: ask one question and exit
-uv run university-agent --user admin --question "which teacher has the most enrolled students?"
+uv run university-agent-cli --user admin --question "which teacher has the most enrolled students?"
+```
+Run it with no flags for interactive mode — pick a role, then a user, then ask questions one at
+a time (`--role` / `--user` skip the matching prompts):
+```bash
+uv run university-agent-cli
 ```
 
 ### Web app (demo & validation)
@@ -86,20 +96,22 @@ agent path: pick role → user → ask → see answer, generated SQL, result row
 Load the working DB from the fixed fixture or a fresh seed via the sidebar.
 
 ```bash
-uv sync --extra web      # install the web deps (Streamlit + Ag-Grid)
-uv run university-web     # launch (or: uv run streamlit run src/university_web/app.py)
-
-# write committed execution traces (per-node flow as JSON under traces/)
-uv run university-web-traces
-
-# optional: export the full LangSmith run trees (needs LANGSMITH_API_KEY) into traces/langsmith/
-uv run university-web-traces --from-langsmith
+uv sync --extra web          # install the web deps (Streamlit + Ag-Grid)
+uv run university-agent-web   # launch (or: uv run streamlit run src/university_web/app.py)
 ```
 
 ### Tracing (LangSmith)
 Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` in `.env`. Every run is traced end to end
 (User → nodes → SQL → DB results → answer), tagged with the user/role; the CLI prints a link to
 each question's trace.
+
+### Execution traces (committed artifact)
+Capture the agent's per-node flow (question → reasoning → SQL → rows → answer) over the fixed
+fixture, as committed JSON under `traces/` — a flow artifact, independent of CLI vs. web:
+```bash
+uv run python -m evals.capture_traces                  # local capture (works without a key)
+uv run python -m evals.capture_traces --from-langsmith # export full LangSmith run trees (needs a key)
+```
 
 ### Tests & lint
 ```bash
@@ -127,3 +139,34 @@ over JSON-RPC and discovers its tools. Identity is resolved **server-side**: a s
 only their own enrollments, a teacher their courses, an admin everything. The LLM never sees
 the user id, and a SQL validator (single read-only `SELECT` + table allowlist) plus a
 read-only connection make data leaks impossible regardless of what the model generates.
+
+## Home Task Deliverables
+
+Jump to the answer for each required deliverable:
+
+1. [SQL schema and seed data](#1-sql-schema-and-seed-data)
+2. [LangGraph application code](#2-langgraph-application-code)
+3. [Unit tests](#3-unit-tests)
+
+### 1. SQL schema and seed data
+`src/university_db/ddl/schema.sql` is the authoritative DDL — 7 tables (`students`, `teachers`,
+`courses`, `semesters`, `course_offerings`, `enrollments`, `users`) with FK / UNIQUE / CHECK
+constraints. The SQLAlchemy models in `models.py` mirror it, and a test applies the SQL then
+exercises the models, so any drift fails the suite. Two data paths: **generate** a seeded dataset
+via `university-init-db` / `seed.py` (size via `SeedConfig`), or **load the fixed** committed dump
+`evals/fixture.sql` — see [Loading data: fixed vs. generated](#loading-data-fixed-vs-generated).
+
+### 2. LangGraph application code
+`src/university_agent/` (graph, nodes, state, LLM factory, MCP gateway) implements the pipeline
+`understand → generate_sql → execute → synthesize`, with an off-topic / compound gate and capped
+self-correction. It reaches the database only through the MCP server in `src/university_db_mcp/` —
+the DB-agnostic boundary (the agent has no DB import, enforced by CI). Aggregations, joins,
+filtering, and multi-step (CTE / window) queries are supported and exercised by the eval.
+
+### 3. Unit tests
+`tests/` (~63 tests, ~91% coverage): `test_db/` (schema↔models drift, FK/CHECK, read-only, seed
+determinism, access scoping), `test_mcp/` (SQL validation, scoped execution + schema),
+`test_agent/` (graph: happy / off-topic / unanswerable / retry / give-up / compound; node helpers;
+LLM factory), `test_cli/`, and `test_e2e/` (real MCP server + DB, stubbed LLM). CI runs a
+per-component matrix that also enforces the agent↔DB isolation. This covers the task's three named
+areas: DB queries & joins, NL→SQL generation, and end-to-end agent behavior.

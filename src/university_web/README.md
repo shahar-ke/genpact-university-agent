@@ -21,11 +21,12 @@ A shared sidebar builds the working DB from either the **fixed eval fixture** (`
 or a **fresh random seed** (with adjustable row counts), so both pages run against the same data.
 
 ```bash
-uv sync --extra web                                   # streamlit + streamlit-aggrid + pandas
-uv run university-web                                  # launch (sugar for `streamlit run .../app.py`)
-uv run university-web-traces                           # write committed per-node JSON traces under traces/
-uv run university-web-traces --from-langsmith          # export the live LangSmith run trees (needs a key)
+uv sync --extra web          # streamlit + streamlit-aggrid + pandas
+uv run university-agent-web   # launch (sugar for `streamlit run .../app.py`)
 ```
+
+> Committed execution traces are a *flow* artifact, not a web concern — they live in the eval
+> harness: `uv run python -m evals.capture_traces` (see [evals/](../../evals/README.md)).
 
 ## Design / key files
 
@@ -34,16 +35,13 @@ uv run university-web-traces --from-langsmith          # export the live LangSmi
 | `app.py` | the Streamlit app: shared sidebar (data control) + the two pages (Data view, Query tool) |
 | `agent_runner.py` | runs the scoped agent for one question, **streaming** the per-node flow (question → reasoning → sql → rows → answer) and capturing a trace URL; wraps the async graph in `asyncio.run` for sync Streamlit |
 | `data.py` | working-DB control (`build_db` from fixture or seed) + read-only god-mode table reads (imports only `university_db`) |
-| `launcher.py` | the `university-web` console script — hands off to Streamlit's CLI, forwarding extra args |
-| `traces.py` | the `university-web-traces` script — default mode runs one representative question per role and writes each full flow as committed JSON under `traces/` (LangSmith-free); `--from-langsmith` instead pulls the full run trees back from the LangSmith API into `traces/langsmith/` |
+| `launcher.py` | the `university-agent-web` console script — hands off to Streamlit's CLI, forwarding extra args |
 
 ## Behavior without a LangSmith key
 
 Nothing crashes. `agent_runner` only enters `tracing_v2_enabled` when `LANGSMITH_API_KEY` is
 set; otherwise the agent runs untraced and no trace link is shown — the CLI and web Query tool
-both work the same way. The local trace capture still writes its JSON (`langsmith_trace_url:
-null`). Only `university-web-traces --from-langsmith` needs a key (it reads the LangSmith API)
-and exits with a clear message if it is missing.
+both work the same way.
 
 ## Main libraries
 
