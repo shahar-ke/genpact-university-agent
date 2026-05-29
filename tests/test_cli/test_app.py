@@ -1,4 +1,4 @@
-"""CLI helper tests (composition root). Interactive I/O is monkeypatched."""
+"""CLI helper tests (composition root). Interactive I/O is monkey patched."""
 
 from university_cli import app
 

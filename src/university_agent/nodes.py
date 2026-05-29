@@ -8,15 +8,15 @@ on each call — the LLM never sees it.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 from pydantic import BaseModel, Field
 
-from university_agent.mcp_gateway import Gateway
-from university_agent.state import AgentState
+from university_agent.state import AgentState, Attempt
+from university_agent.university_db_mcp_gateway import Gateway
 
 MAX_ATTEMPTS = 3
 
@@ -27,7 +27,12 @@ MAX_ATTEMPTS = 3
 class Understanding(BaseModel):
     """Whether the question is answerable from this DB, and a normalized rewrite."""
 
+    reasoning: str = Field(default="", description="Brief reason for the in_scope decision")
     in_scope: bool = Field(description="True if answerable from the university database")
+    is_compound: bool = Field(
+        default=False,
+        description="True if the question asks for multiple distinct things needing separate SQL",
+    )
     normalized_question: str = Field(description="A precise, self-contained rewrite")
 
 
@@ -49,8 +54,17 @@ You can ONLY see the relations the current user is allowed to query:
 User question: {question}
 
 Decide if this is answerable from these relations. Off-topic questions (weather, chit-chat,
-anything unrelated to this university data) are NOT in scope. If in scope, rewrite the
-question into a precise, self-contained form grounded in the available relations."""
+anything unrelated to this university data) are NOT in scope.
+
+Set is_compound=true ONLY when the question contains two or more SEPARATE, UNRELATED asks
+that produce different result shapes and genuinely cannot be answered by one SQL query (e.g.
+"list my courses AND give my average grade" — a list plus a scalar). Do NOT set it for a
+single question that merely combines computations over the same group (e.g. "the count and
+average of my grades" is one query), nor for comparative/superlative phrasings ("what is the
+maximum", "which teacher has the most").
+
+If in scope, rewrite the question into a precise, self-contained form grounded in the
+available relations."""
 
 _GENERATE_PROMPT = """You are an expert SQLite analyst. Write ONE read-only SELECT that
 answers the question, using ONLY these relations (and their columns):
@@ -84,10 +98,12 @@ Rows ({row_count} total, showing up to 50): {rows}"""
 
 
 def _llm(config: RunnableConfig) -> BaseChatModel:
+    """Pull the per-run chat model injected into the graph config."""
     return config["configurable"]["llm"]
 
 
 def _gateway(config: RunnableConfig) -> Gateway:
+    """Pull the per-run MCP gateway injected into the graph config."""
     return config["configurable"]["gateway"]
 
 
@@ -100,7 +116,7 @@ def render_schema(schema: dict[str, Any]) -> str:
     return "\n".join(lines) or "(no accessible relations)"
 
 
-def _retry_feedback(history: list[dict[str, Any]]) -> str:
+def _retry_feedback(history: list[Attempt]) -> str:
     """Render all prior failed attempts so the LLM avoids repeating them."""
     if not history:
         return ""
@@ -108,6 +124,14 @@ def _retry_feedback(history: list[dict[str, Any]]) -> str:
     for index, attempt in enumerate(history, start=1):
         lines.append(f"  attempt {index}: {attempt['sql']}\n    -> {attempt['error']}")
     return "\n".join(lines) + "\n"
+
+
+def _message_text(content: str | list[Any]) -> str:
+    """Flatten an LLM message's content (a string or content blocks) into plain text."""
+    if isinstance(content, str):
+        return content
+    parts = [block if isinstance(block, str) else block.get("text", "") for block in content]
+    return "".join(parts)
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
@@ -122,8 +146,14 @@ async def load_schema(state: AgentState, config: RunnableConfig) -> dict[str, An
 async def understand_question(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
     """Relevance gate + schema-grounded rewrite of the question."""
     prompt = _UNDERSTAND_PROMPT.format(schema=state["schema_text"], question=state["question"])
-    result: Understanding = await _llm(config).with_structured_output(Understanding).ainvoke(prompt)
-    return {"in_scope": result.in_scope, "normalized_question": result.normalized_question}
+    structured = _llm(config).with_structured_output(Understanding)
+    result = cast(Understanding, await structured.ainvoke(prompt))
+    return {
+        "reasoning": result.reasoning,
+        "in_scope": result.in_scope,
+        "is_compound": result.is_compound,
+        "normalized_question": result.normalized_question,
+    }
 
 
 async def generate_sql(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
@@ -136,11 +166,12 @@ async def generate_sql(state: AgentState, config: RunnableConfig) -> dict[str, A
         question=state["normalized_question"],
         feedback=feedback,
     )
-    gen: SqlGeneration = await _llm(config).with_structured_output(SqlGeneration).ainvoke(prompt)
-    attempts = state.get("attempts", 0) + 1
+    structured = _llm(config).with_structured_output(SqlGeneration)
+    gen = cast(SqlGeneration, await structured.ainvoke(prompt))
+    attempt_num = state.get("attempt_num", 0) + 1
     if not gen.answerable:
-        return {"attempts": attempts, "answer": f"I can't answer that: {gen.reason}"}
-    return {"attempts": attempts, "sql": gen.sql}
+        return {"attempt_num": attempt_num, "answer": f"I can't answer that: {gen.reason}"}
+    return {"attempt_num": attempt_num, "sql": gen.sql}
 
 
 async def execute_sql(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
@@ -162,10 +193,20 @@ async def synthesize_answer(state: AgentState, config: RunnableConfig) -> dict[s
         rows=json.dumps(result["rows"][:50], default=str),
     )
     message = await _llm(config).ainvoke(prompt)
-    return {"answer": message.content}
+    return {"answer": _message_text(message.content)}
 
 
-def capabilities_reply(state: AgentState) -> dict[str, Any]:
+def single_question_reply(_state: AgentState) -> dict[str, Any]:
+    """Terminal reply for compound (multi-part) questions."""
+    return {
+        "answer": (
+            "I can answer one question at a time. Please split that into separate questions "
+            "and ask them one by one."
+        )
+    }
+
+
+def capabilities_reply(_state: AgentState) -> dict[str, Any]:
     """Terminal reply for off-topic questions."""
     return {
         "answer": (
@@ -192,16 +233,23 @@ def give_up(state: AgentState) -> dict[str, Any]:
 
 
 def route_after_understand(state: AgentState) -> str:
-    return "generate_sql" if state.get("in_scope") else "capabilities_reply"
+    """Off-topic -> capabilities; compound -> ask one at a time; else -> SQL generation."""
+    if not state.get("in_scope"):
+        return "capabilities_reply"
+    if state.get("is_compound"):
+        return "single_question_reply"
+    return "generate_sql"
 
 
 def route_after_generate(state: AgentState) -> str:
+    """Stop if generation produced a terminal answer (unanswerable); otherwise execute."""
     return END if state.get("answer") else "execute_sql"
 
 
 def route_after_execute(state: AgentState) -> str:
+    """Synthesize on success; otherwise retry until MAX_ATTEMPTS, then give up."""
     if state["result"].get("status") == "ok":
         return "synthesize_answer"
-    if state.get("attempts", 0) >= MAX_ATTEMPTS:
+    if state.get("attempt_num", 0) >= MAX_ATTEMPTS:
         return "give_up"
     return "generate_sql"

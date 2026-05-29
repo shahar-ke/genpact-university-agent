@@ -23,6 +23,7 @@ from university_db_mcp.service import (
 from university_db_mcp.validation import RejectionCategory
 
 
+# noinspection DuplicatedCode
 def _seed_known(engine):
     """Alice (90) and Bob (60) in one offering taught by Prof; plus an admin login."""
     with session_scope(engine) as s:
@@ -62,6 +63,7 @@ def db(tmp_path):
     return ro, scope_for
 
 
+# noinspection PyTypeChecker
 def test_student_query_returns_only_own_data(db):
     engine, scope_for = db
     result = run_query(scope_for("alice"), engine, "SELECT grade FROM my_enrollments")
@@ -69,6 +71,7 @@ def test_student_query_returns_only_own_data(db):
     assert result["rows"] == [{"grade": 90.0}]  # Alice's, not Bob's
 
 
+# noinspection PyTypeChecker
 def test_forbidden_table_is_rejected(db):
     engine, scope_for = db
     result = run_query(scope_for("alice"), engine, "SELECT * FROM enrollments")
@@ -78,11 +81,13 @@ def test_forbidden_table_is_rejected(db):
 
 def test_non_select_is_rejected(db):
     engine, scope_for = db
+    # noinspection PyTypeChecker
     result = run_query(scope_for("alice"), engine, "DROP TABLE courses")
     assert result["status"] == "rejected"
     assert result["category"] == RejectionCategory.NOT_READ_ONLY
 
 
+# noinspection PyTypeChecker
 def test_execution_error_is_returned_not_raised(db):
     engine, scope_for = db
     # passes shape + allowlist validation, but the column does not exist
@@ -91,6 +96,7 @@ def test_execution_error_is_returned_not_raised(db):
     assert "bogus_col" in result["reason"]
 
 
+# noinspection PyTypeChecker
 def test_duplicate_column_labels_are_disambiguated(db):
     engine, scope_for = db
     result = run_query(
@@ -101,6 +107,7 @@ def test_duplicate_column_labels_are_disambiguated(db):
     assert result["rows"][0]["student_id"] == result["rows"][0]["student_id_2"]
 
 
+# noinspection PyTypeChecker
 def test_teacher_sees_their_students(db):
     engine, scope_for = db
     result = run_query(scope_for("prof"), engine, "SELECT COUNT(*) AS n FROM my_students")
@@ -108,6 +115,7 @@ def test_teacher_sees_their_students(db):
     assert result["rows"] == [{"n": 2}]
 
 
+# noinspection PyTypeChecker
 def test_admin_can_query_raw_tables(db):
     engine, scope_for = db
     result = run_query(scope_for("root"), engine, "SELECT COUNT(*) AS n FROM enrollments")
@@ -115,6 +123,7 @@ def test_admin_can_query_raw_tables(db):
     assert result["rows"] == [{"n": 2}]
 
 
+# noinspection PyTypeChecker
 def test_schema_lists_scoped_relations_only(db):
     engine, scope_for = db
     schema = build_schema(scope_for("alice"), engine)

@@ -16,10 +16,12 @@ from university_db.schema import apply_schema
 from university_db.seed import SeedConfig, generate
 
 
+# noinspection PyMethodMayBeStatic
 class _StubLLM:
     """Canned structured outputs + a fixed synthesized answer."""
 
     def with_structured_output(self, model):
+        # noinspection PyMethodMayBeStatic
         class _Structured:
             async def ainvoke(self, _prompt):
                 if model is Understanding:
@@ -34,6 +36,7 @@ class _StubLLM:
         return AIMessage(content="You are enrolled in several courses.")
 
 
+# noinspection PyTypeChecker
 @pytest.mark.asyncio
 async def test_agent_runs_against_real_mcp_server(tmp_path):
     url = f"sqlite:///{tmp_path / 'e2e.db'}"

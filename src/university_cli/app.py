@@ -18,12 +18,13 @@ import os
 from dotenv import load_dotenv
 
 from university_agent.graph import answer_question
-from university_db.directory import list_users_by_role
+from university_db.directory import list_users_by_role, role_of
 from university_db.engine import make_engine
 from university_db.roles import Role
 
 
 def _choose(prompt: str, options: list[str]) -> str:
+    """Prompt for a 1-based numeric pick from `options`, re-prompting until one is valid."""
     for index, option in enumerate(options, start=1):
         print(f"  {index}. {option}")
     while True:
@@ -45,6 +46,7 @@ def resolve_user(engine, user: str | None, role_name: str | None) -> str:
 
 
 def main() -> None:
+    """CLI entry point: load env, pick a user (mock-login), then run the agent on a question."""
     load_dotenv()
     os.environ.setdefault("LANGSMITH_PROJECT", "university-agent")
 
@@ -57,9 +59,11 @@ def main() -> None:
 
     engine = make_engine(args.db_url, read_only=True)
     username = resolve_user(engine, args.user, args.role)
+    role = role_of(engine, username)  # for trace metadata only
+    print("(Ask one question at a time.)")
     question = args.question or input("Your question: ").strip()
 
-    answer = asyncio.run(answer_question(question, username, db_url=args.db_url))
+    answer = asyncio.run(answer_question(question, username, db_url=args.db_url, role=role))
     print("\n" + answer)
 
 

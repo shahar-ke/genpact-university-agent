@@ -39,11 +39,14 @@ def _parse(result: Any) -> dict[str, Any]:
         return json.loads(result[0]["text"])
     if isinstance(result, str):
         return json.loads(result)
+    assert isinstance(result, dict)
     return result  # already structured
 
 
 @dataclass
 class _Connected:
+    """Live gateway over discovered MCP tools/resources; implements the Gateway protocol."""
+
     tools: dict[str, BaseTool]
     session: Any
 
@@ -55,7 +58,7 @@ class _Connected:
 
     async def get_examples(self) -> str:
         blobs = await load_mcp_resources(self.session, uris=[EXAMPLES_URI])
-        return blobs[0].data
+        return str(blobs[0].data)
 
 
 @asynccontextmanager

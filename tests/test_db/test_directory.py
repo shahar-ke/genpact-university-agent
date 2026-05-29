@@ -1,6 +1,6 @@
 """User directory (mock-login) lookups."""
 
-from university_db.directory import list_users_by_role
+from university_db.directory import list_users_by_role, role_of
 from university_db.engine import make_engine, session_scope
 from university_db.models import Student, Teacher, User
 from university_db.roles import Role
@@ -40,3 +40,13 @@ def test_respects_limit(tmp_path):
     _seed(engine)
 
     assert list_users_by_role(engine, Role.STUDENT, limit=1) == ["alice"]
+
+
+def test_role_of(tmp_path):
+    engine = make_engine(f"sqlite:///{tmp_path / 'role.db'}", read_only=False)
+    apply_schema(engine)
+    _seed(engine)
+
+    assert role_of(engine, "alice") == "student"
+    assert role_of(engine, "admin") == "admin"
+    assert role_of(engine, "nobody") is None

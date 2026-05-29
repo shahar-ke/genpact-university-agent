@@ -1,6 +1,7 @@
 """Unit tests for the pure node helpers (no LLM / no gateway)."""
 
-from university_agent.nodes import _retry_feedback, render_schema
+# noinspection PyProtectedMember
+from university_agent.nodes import _message_text, _retry_feedback, render_schema
 
 
 def test_render_schema_lists_relations_and_columns():
@@ -34,3 +35,12 @@ def test_retry_feedback_lists_every_prior_attempt():
     assert "no such column: bad" in feedback
     assert "SELECT * FROM enrollments" in feedback
     assert "forbidden_relation" in feedback
+
+
+def test_message_text_passes_through_plain_strings():
+    assert _message_text("just text") == "just text"
+
+
+def test_message_text_flattens_content_blocks():
+    content = ["Hello ", {"type": "text", "text": "world"}, {"type": "image"}]
+    assert _message_text(content) == "Hello world"

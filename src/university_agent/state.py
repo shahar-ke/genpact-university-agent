@@ -19,16 +19,20 @@ class Attempt(TypedDict):
 
 
 class AgentState(TypedDict, total=False):
+    """The QA agent's working state; nodes return partial dicts that LangGraph merges."""
+
     # inputs
     question: str
     user_id: str
     # understanding
     schema_text: str
+    reasoning: str  # why the question was judged in/out of scope (trace visibility)
     in_scope: bool
+    is_compound: bool  # asks for multiple distinct things -> direct user to ask one at a time
     normalized_question: str
     # query / execution
     sql: str
-    attempts: int
+    attempt_num: int
     result: dict[str, Any]
     # Accumulated failed attempts (reducer appends), so generate_sql sees the full history
     # and the LLM can avoid repeating a mistake while converging on valid SQL.

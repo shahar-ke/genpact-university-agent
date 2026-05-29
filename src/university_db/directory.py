@@ -24,3 +24,11 @@ def list_users_by_role(engine: Engine, role: Role, limit: int = 3) -> list[str]:
             .all()
         )
     return list(rows)
+
+
+def role_of(engine: Engine, username: str) -> str | None:
+    """Return a user's role (for trace metadata); None if the user is unknown."""
+    with session_scope(engine) as session:
+        return session.execute(
+            select(User.role).where(User.username == username)
+        ).scalar_one_or_none()

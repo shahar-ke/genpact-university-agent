@@ -43,6 +43,7 @@ class FakeLLM:
         return AIMessage(content=self._answer)
 
 
+# noinspection PyMethodMayBeStatic
 class FakeGateway:
     def __init__(self, responses=None):
         self.responses = list(responses or [])
@@ -62,7 +63,7 @@ class FakeGateway:
 async def _run(llm, gateway, question="anything"):
     graph = build_graph()
     return await graph.ainvoke(
-        {"question": question, "user_id": "alice", "attempts": 0},
+        {"question": question, "user_id": "alice", "attempt_num": 0},
         config={"configurable": {"llm": llm, "gateway": gateway}},
     )
 
@@ -87,6 +88,19 @@ async def test_off_topic_short_circuits():
     gateway = FakeGateway()
     final = await _run(llm, gateway, question="what's the weather?")
     assert "only answer questions about the university data" in final["answer"]
+    assert gateway.executed == []  # never reached SQL
+
+
+@pytest.mark.asyncio
+async def test_compound_question_asks_one_at_a_time():
+    llm = FakeLLM(
+        understanding=[
+            Understanding(in_scope=True, is_compound=True, normalized_question="a and b")
+        ]
+    )
+    gateway = FakeGateway()
+    final = await _run(llm, gateway, question="my average grade and which courses am I taking?")
+    assert "one question at a time" in final["answer"]
     assert gateway.executed == []  # never reached SQL
 
 

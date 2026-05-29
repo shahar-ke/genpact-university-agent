@@ -25,6 +25,7 @@ from university_db.models import (
 from university_db.schema import apply_schema
 
 
+# noinspection DuplicatedCode
 def _seed_known(engine):
     """Two students in one offering; one teacher. Known ids for precise assertions."""
     with session_scope(engine) as s:
