@@ -18,21 +18,27 @@ seed    = ["genpact-university-agent[db]", "faker>=30"]
 db-mcp  = ["genpact-university-agent[db]", "mcp>=1.2", "sqlglot>=25"]
 agent   = [                             # note: NO sqlalchemy here — the whole point
     "langgraph>=0.2",
+    "langchain>=0.3",                   # init_chat_model (provider-agnostic LLM factory)
     "langchain-core>=0.3",
-    "langchain-anthropic>=0.2",
+    "langchain-ollama>=0.2",            # default open-source provider (llama/gemma/gpt-oss)
     "langchain-mcp-adapters>=0.1",
     "mcp>=1.2",
+    # Commercial providers are opt-in: `uv pip install langchain-anthropic` (or -openai),
+    # then set LLM_PROVIDER / LLM_MODEL. See README.
 ]
-all     = ["genpact-university-agent[db-mcp,seed,agent]"]
+cli     = ["genpact-university-agent[db,agent]", "python-dotenv>=1.0"]  # demo composition root
+all     = ["genpact-university-agent[db-mcp,seed,agent,cli]"]
 
 [project.scripts]
 university-init-db = "university_db.init_db:main"
 university-db-mcp = "university_db_mcp.server:main"
+university-agent = "university_cli.app:main"
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
     "ruff>=0.6.0",
 ]
 
@@ -41,6 +47,7 @@ packages = [
     "src/university_db",
     "src/university_db_mcp",
     "src/university_agent",
+    "src/university_cli",
 ]
 
 [tool.ruff]

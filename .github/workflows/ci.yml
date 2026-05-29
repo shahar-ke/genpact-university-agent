@@ -37,6 +37,12 @@ jobs:
           - component: mcp
             extras: "--extra db-mcp --extra seed"
             path: tests/test_mcp
+          - component: agent
+            extras: "--extra agent"
+            path: tests/test_agent
+          - component: e2e
+            extras: "--extra all"
+            path: tests/test_e2e tests/test_cli
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6

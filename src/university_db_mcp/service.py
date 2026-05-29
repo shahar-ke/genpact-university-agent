@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import Connection, Engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from university_db.access import Scope, create_session_views, resolve_scope
 from university_db.engine import session_scope
@@ -93,9 +94,11 @@ def _resolve(engine: Engine, username: str) -> Scope:
 def run_query(scope: Scope, engine: Engine, sql: str) -> dict[str, Any]:
     """Validate then execute read-only SQL within the caller's scope.
 
-    Returns a structured result the agent can route on: a rejection (category + reason) for
-    invalid/out-of-scope SQL, or the result rows. Never raises on bad SQL — rejection is a
-    normal, self-correctable outcome.
+    Always returns a structured result the agent can route on, never raising on bad SQL:
+    - status "rejected" (category + reason): failed shape/allowlist validation;
+    - status "error" (reason): passed validation but failed at execution (e.g. a bad column);
+    - status "ok" (columns + row_count + rows): the result set.
+    Both rejected and error are normal, self-correctable outcomes for the agent.
     """
     verdict = validate_sql(sql, scope.allowlist)
     if not verdict.ok:
@@ -105,10 +108,23 @@ def run_query(scope: Scope, engine: Engine, sql: str) -> dict[str, Any]:
     # out cross-user view leakage if the engine's pool is ever shared (see server.py notes).
     with engine.connect() as conn:
         create_session_views(conn, scope)
-        cursor = conn.execute(text(sql))
-        columns = list(cursor.keys())
-        rows = [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        try:
+            cursor = conn.execute(text(sql))
+            columns = _unique_columns(list(cursor.keys()))
+            rows = [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        except SQLAlchemyError as exc:
+            return {"status": "error", "reason": str(getattr(exc, "orig", None) or exc)}
     return {"status": "ok", "columns": columns, "row_count": len(rows), "rows": rows}
+
+
+def _unique_columns(columns: list[str]) -> list[str]:
+    """Disambiguate duplicate result labels (e.g. id, id -> id, id_2) so row dicts stay 1:1."""
+    counts: dict[str, int] = {}
+    unique: list[str] = []
+    for column in columns:
+        counts[column] = counts.get(column, 0) + 1
+        unique.append(column if counts[column] == 1 else f"{column}_{counts[column]}")
+    return unique
 
 
 def build_schema(scope: Scope, engine: Engine) -> AccessibleSchema:

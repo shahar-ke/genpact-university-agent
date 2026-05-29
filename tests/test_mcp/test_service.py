@@ -83,6 +83,24 @@ def test_non_select_is_rejected(db):
     assert result["category"] == RejectionCategory.NOT_READ_ONLY
 
 
+def test_execution_error_is_returned_not_raised(db):
+    engine, scope_for = db
+    # passes shape + allowlist validation, but the column does not exist
+    result = run_query(scope_for("alice"), engine, "SELECT bogus_col FROM my_enrollments")
+    assert result["status"] == "error"
+    assert "bogus_col" in result["reason"]
+
+
+def test_duplicate_column_labels_are_disambiguated(db):
+    engine, scope_for = db
+    result = run_query(
+        scope_for("alice"), engine, "SELECT student_id, student_id FROM my_enrollments"
+    )
+    assert result["status"] == "ok"
+    assert result["columns"] == ["student_id", "student_id_2"]
+    assert result["rows"][0]["student_id"] == result["rows"][0]["student_id_2"]
+
+
 def test_teacher_sees_their_students(db):
     engine, scope_for = db
     result = run_query(scope_for("prof"), engine, "SELECT COUNT(*) AS n FROM my_students")
