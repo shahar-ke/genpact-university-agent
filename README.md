@@ -195,7 +195,9 @@ the DB-agnostic boundary (the agent has no DB import, enforced by CI). Aggregati
 filtering, and multi-step (CTE / window) queries are supported and exercised by the eval.
 
 ### 3. Unit tests
-~63 tests, ~91% coverage, mirroring the package layout — one test subpackage per component:
+63 tests mirroring the package layout — one test subpackage per component. Coverage is **~93%
+across the core packages** (`university_db` / `university_db_mcp` / `university_agent`); the
+Streamlit web UI is a thin presentation layer, validated manually rather than unit-tested.
 
 ```
 tests/
@@ -228,7 +230,7 @@ has no `sqlalchemy`, so an accidental DB import there fails the build.
 **Run manually.**
 ```bash
 uv run pytest                              # full suite
-uv run pytest --cov=src --cov-report=term  # with coverage
+uv run pytest --cov=university_db --cov=university_db_mcp --cov=university_agent  # ~93% on core
 uv run pytest tests/test_db -v             # one component
 uv run pytest tests/test_agent/test_graph.py::test_off_topic_short_circuits  # one test
 ```
